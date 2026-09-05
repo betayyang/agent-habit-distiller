@@ -36,9 +36,25 @@ like to work" — then hands Claude a concise, hand-editable habits list.
 2. Scan every project's `*.jsonl` transcripts and `history.jsonl` in that window.
 3. Distill only **stable, reusable** signals (default: seen ≥ 2 times) into four
    categories — `user`, `feedback`, `project`, `reference`.
-4. Write per-habit memory files (dedup + overturn old ones).
-5. Rewrite the sentinel-managed **habits block** in `CLAUDE.md` (leaving the rest untouched).
-6. Update `.last-run` and print a short summary.
+4. Write per-habit files into the **ledger** (dedup, keep superseded history).
+5. Run a rotating **staleness audit** — the only path by which anything is ever removed.
+6. Rewrite the sentinel-managed **habits block** in `CLAUDE.md` within a character
+   budget, under a zero-net-growth rule (leaving the rest of the file untouched).
+7. Update `.last-run` and print a short summary.
+
+### Two layers, on purpose
+
+The habits block in `CLAUDE.md` is loaded **in full, on every single turn** — so it
+is budgeted and holds decision rules only. The ledger is read on demand and holds
+the Why: evidence, cases, dates, numbers, and how a belief was overturned. Every
+line in the block can carry a `→slug` pointer to its ledger file, which is what
+makes it safe to keep the block short.
+
+Without that split, the block only ever grows. In one real 98-day run it went from
+13 entries to 51 and from a few KB to ~105,000 characters, with zero deletions —
+because a scheduled job only ever sees *today's* new material, and nothing ever
+tells it to re-examine what's already there. Hence the staleness audit and the
+character budget.
 
 See [`docs/how-it-works.md`](docs/how-it-works.md) for the full design and
 [`examples/`](examples/) for a before/after `CLAUDE.md`.
@@ -75,8 +91,19 @@ Uninstall (leaves your memory + habits block in place):
 
 All knobs live in `~/.config/claude-habit-distiller/config.toml` (see
 [`config.example.toml`](config.example.toml)): language, look-back window,
-stability threshold, max habits, whether to write the global block, project
-exclusions, and memory location.
+stability threshold, character budget, whether to write the global block, project
+exclusions, and ledger location.
+
+Two notes if you installed an earlier version:
+
+- **`max_habits` is deprecated**, replaced by `max_block_chars` / `max_entry_chars`.
+  Capping the *line count* is the wrong axis — the model just grows the existing
+  lines instead, so the count stays compliant while single entries balloon.
+- **The ledger moved** from `~/.claude/projects/<home-project>/memory/` to
+  `~/.claude/knowledge/habits/`. The old location is isolated per project directory,
+  so any session started from a git worktree or a second checkout got an empty one
+  and could never read back what had been distilled. The skill migrates an existing
+  install automatically on its next run and leaves a pointer file behind.
 
 ## Optional: notify on each run
 

@@ -11,8 +11,11 @@ last run ──► scan transcripts + history ──► distill (≥ N occurrenc
                                                    │
                         ┌──────────────────────────┴───────────────────────┐
                         ▼                                                    ▼
-          per-habit memory files                            "My Habits" block in CLAUDE.md
-          (detailed, with Why)                              (concise, ~16 imperatives)
+              ledger (on demand)          ◄── push detail down ───   "My Habits" in CLAUDE.md
+      ~/.claude/knowledge/habits/*.md      ─── →slug pointers ──►     (every turn, budgeted)
+        Why · evidence · history                                     decision rules only
+                        ▲                                                    │
+                        └──────────  staleness audit (rotating)  ◄───────────┘
 ```
 
 ### 1. Window
@@ -38,14 +41,34 @@ one of four types:
 | `project` | cross-session goals / constraints | absolute dates |
 | `reference` | external resources (URLs, dashboards) | — |
 
-### 4. Memory files (the ledger)
-Each habit is one markdown file with frontmatter (`name`, `description`, `type`)
-and a body. The skill **dedups against existing files** — updating and raising
-confidence rather than duplicating — and **deletes memories that new evidence
-overturns**. A `MEMORY.md` index carries one pointer line per habit.
+### 4. The ledger
+Each habit is one markdown file in `~/.claude/knowledge/habits/`, with frontmatter
+(`name`, `description`, `type`) and a body. The skill **dedups against existing
+files** — updating and raising confidence rather than duplicating. When a
+conclusion is overturned, the ledger keeps the history ("X was replaced by Y on
+\<date\>, because Z"); only the execution layer drops the old claim. `INDEX.md`
+carries one pointer line per habit.
 
-### 5. CLAUDE.md habits block (the view)
-The most useful ~`max_habits` habits are rendered as concise imperatives between:
+The ledger is deliberately **not** under `projects/<slug>/memory/`: that path is
+isolated per project directory, so a session started from a git worktree or a
+second checkout sees an empty one. Everything distilled would be unreadable from
+exactly the sessions that need it most.
+
+The ledger has no size cap — it isn't auto-loaded. It does get hygiene rules:
+split files whose topics have become mixed (ask "could I read just half of this
+and be done?"), archive finished `project` entries, and store each fact once with
+`[[links]]` rather than copies that drift apart.
+
+### 5. Staleness audit
+A scheduled job only ever sees *today's* material, so nothing would ever prompt it
+to re-examine what's already stored — deletion never happens on its own. Each run
+therefore audits a rotating slice: the 3 longest entries plus the 3 after the last
+cursor position. For each it asks whether some claim has been superseded, whether
+evidence should be pushed down to the ledger, and whether the entry is over
+`max_entry_chars`. Nothing is deleted without positive evidence that it's stale.
+
+### 6. CLAUDE.md habits block (the execution layer)
+The most useful habits are rendered as concise imperatives between:
 
 ```
 <!-- BEGIN habit-distiller (auto-managed · do not edit this block by hand) -->
@@ -56,9 +79,25 @@ The most useful ~`max_habits` habits are rendered as concise imperatives between
 Only this region is rewritten; the rest of your `CLAUDE.md` is preserved. Because
 it's plaintext, you can hand-edit or delete it anytime.
 
+This block is loaded **in full on every turn**, so it is governed by a character
+budget (`max_block_chars`, `max_entry_chars`) and a **zero-net-growth** rule: to
+fold in a new signal, an equivalent amount of evidence must be pushed out of that
+same entry and into the ledger. Anything removed from the block must land in a
+ledger file first — nothing may simply disappear.
+
+Measure the block in **characters, not bytes**: `wc -c` overstates CJK text by
+roughly 2.4x, which is enough to make a compliant block look 8x over budget.
+
+Why the budget exists: capping the *number of entries* (the old `max_habits`) is
+the wrong axis. In one real 98-day run the block went from 13 entries to 51 while
+growing to ~105,000 characters, with zero deletions across 98 scheduled runs —
+the line cap simply pushed new material into existing lines. A single entry had
+reached 30,000 characters, a quarter of the whole block.
+
 ## Design principles
 - **Prefer fewer, higher-confidence entries.** Unsure it's stable? Skip it; wait for more evidence.
-- **Two layers.** `CLAUDE.md` is the concise view Claude loads every session; the memory files are the detailed ledger with the *why*.
+- **Two layers.** `CLAUDE.md` is the budgeted view Claude loads every turn; the ledger is the detailed record with the *why*.
+- **Both layers need an exit, not just an entrance.** An append-only memory is just a slower leak.
 - **Idempotent.** Re-running over the same window produces no duplicates.
 - **Private.** Reads only local records; sends nothing over the network.
 

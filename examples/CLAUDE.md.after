@@ -8,6 +8,8 @@
 <!-- BEGIN habit-distiller (auto-managed · do not edit this block by hand) -->
 ## My Habits (auto-distilled · last updated 2026-02-14)
 
+- Habit ledger lives in `~/.claude/knowledge/habits/` (index: INDEX.md). This block
+  holds decision rules only — read the ledger for the Why, the evidence and the cases.
 - Reply in English; be concise and lead with the conclusion.
 - Before changing code, propose the plan and scope first; wait for approval to proceed.
 - Keep changes minimal and focused; don't refactor unrelated code opportunistically.

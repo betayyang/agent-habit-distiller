@@ -3,3 +3,5 @@ config.toml
 skills/distill-habits/.last-run
 skills/distill-habits/.last-summary.txt
 skills/distill-habits/*.log
+skills/distill-habits/.last-audit
+skills/distill-habits/block-size.tsv

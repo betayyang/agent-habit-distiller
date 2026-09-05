@@ -14,8 +14,15 @@ window_days = 7
 # Raise this to be stricter and store fewer, higher-confidence habits.
 min_occurrences = 2
 
-# Maximum number of lines kept in the CLAUDE.md "My Habits" block.
-max_habits = 16
+# Character budget for the CLAUDE.md "My Habits" block, and for any single entry.
+# Cap CHARACTERS, not lines: a line cap makes the model stuff new material into
+# existing lines, so the line count stays "compliant" while single entries grow
+# without bound. Measure with `wc -m` (bytes overstate CJK by ~2.4x).
+max_block_chars = 25000
+max_entry_chars = 2000
+
+# DEPRECATED: line-count cap, kept so existing configs keep parsing. Ignored.
+# max_habits = 16
 
 # Whether to maintain the sentinel-managed habits block in the global CLAUDE.md.
 # Set to false if you only want the detailed per-habit memory files.
@@ -25,7 +32,13 @@ write_global_claude_md = true
 # Useful for excluding sensitive or noisy repos.
 exclude_projects = []
 
-# Where per-habit memory files live.
-#   "auto" = detect the home-project memory dir automatically
-#   or set an absolute path, e.g. "/Users/alice/.claude/memory"
+# Where the habit ledger lives.
+#   "auto" = ~/.claude/knowledge/habits/
+#   or set an absolute path, e.g. "/Users/alice/.claude/knowledge/habits"
+#
+# NOTE: this used to resolve to ~/.claude/projects/<home-project>/memory/.
+# That directory is isolated PER PROJECT DIRECTORY, so any session started from
+# a git worktree or a second checkout gets an empty one and can never read back
+# what was distilled. The ledger now lives at one fixed path instead. On first
+# run the skill migrates an existing legacy directory automatically.
 memory_dir = "auto"
