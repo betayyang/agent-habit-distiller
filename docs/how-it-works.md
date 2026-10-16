@@ -1,8 +1,13 @@
 # How it works
 
-`claude-habit-distiller` is a **reflection job**, not a memory store. It runs on a
-schedule, reads your own Claude Code logs, and produces a curated, human-editable
-profile of how you like to work.
+`agent-habit-distiller` is a **reflection job**, not a memory store. It runs on a
+schedule, reads your own Claude Code or Codex logs, and produces a curated,
+human-editable profile of how you like to work.
+
+The same skill serves both agents. Only the adapters differ — where transcripts
+live and how they are parsed, which instructions file holds the block
+(`CLAUDE.md` vs `AGENTS.md`), and how the headless run is launched. The pipeline
+below is identical for both; `SKILL.md` resolves the paths from a per-agent table.
 
 ## The pipeline
 
@@ -11,21 +16,25 @@ last run ──► scan transcripts + history ──► distill (≥ N occurrenc
                                                    │
                         ┌──────────────────────────┴───────────────────────┐
                         ▼                                                    ▼
-              ledger (on demand)          ◄── push detail down ───   "My Habits" in CLAUDE.md
-      ~/.claude/knowledge/habits/*.md      ─── →slug pointers ──►     (every turn, budgeted)
+              ledger (on demand)          ◄── push detail down ───   "My Habits" block
+      <agent home>/knowledge/habits/*.md   ─── →slug pointers ──►     (every turn, budgeted)
         Why · evidence · history                                     decision rules only
                         ▲                                                    │
                         └──────────  staleness audit (rotating)  ◄───────────┘
 ```
 
 ### 1. Window
-The skill reads `.last-run` (Unix seconds). On first run it looks back
+The skill reads `<ledger>/.state/<agent>/last-run` (Unix seconds). On first run it looks back
 `window_days` (default 7). Everything modified since then is in scope. This makes
 runs **incremental and idempotent** — re-running the same window won't duplicate.
 
 ### 2. Collect
-It finds every `*.jsonl` transcript across **all** project directories modified in
-the window, plus in-window entries from `history.jsonl`. It weights **user
+It finds every transcript across **all** projects with activity in the window, plus
+in-window entries from `history.jsonl`. For Codex it reads only the user's own
+`user_message` events (each message is also echoed as a `response_item`, which is
+not counted twice) and skips sub-agent sessions — approval reviewers and spawned
+child threads — whose "user" turns were written by another agent. Its own runs use
+`codex exec --ephemeral`, so they never show up in tomorrow's material. It weights **user
 messages, corrections, repeated preferences, and praised approaches** most heavily.
 
 ### 3. Distill — the core judgment
@@ -42,14 +51,14 @@ one of four types:
 | `reference` | external resources (URLs, dashboards) | — |
 
 ### 4. The ledger
-Each habit is one markdown file in `~/.claude/knowledge/habits/`, with frontmatter
+Each habit is one markdown file in `<agent home>/knowledge/habits/`, with frontmatter
 (`name`, `description`, `type`) and a body. The skill **dedups against existing
 files** — updating and raising confidence rather than duplicating. When a
 conclusion is overturned, the ledger keeps the history ("X was replaced by Y on
 \<date\>, because Z"); only the execution layer drops the old claim. `INDEX.md`
 carries one pointer line per habit.
 
-The ledger is deliberately **not** under `projects/<slug>/memory/`: that path is
+The Claude ledger is deliberately **not** under `projects/<slug>/memory/`: that path is
 isolated per project directory, so a session started from a git worktree or a
 second checkout sees an empty one. Everything distilled would be unreadable from
 exactly the sessions that need it most.
@@ -67,7 +76,7 @@ cursor position. For each it asks whether some claim has been superseded, whethe
 evidence should be pushed down to the ledger, and whether the entry is over
 `max_entry_chars`. Nothing is deleted without positive evidence that it's stale.
 
-### 6. CLAUDE.md habits block (the execution layer)
+### 6. The habits block in CLAUDE.md / AGENTS.md (the execution layer)
 The most useful habits are rendered as concise imperatives between:
 
 ```
@@ -76,7 +85,7 @@ The most useful habits are rendered as concise imperatives between:
 <!-- END habit-distiller -->
 ```
 
-Only this region is rewritten; the rest of your `CLAUDE.md` is preserved. Because
+Only this region is rewritten; the rest of the file is preserved. Because
 it's plaintext, you can hand-edit or delete it anytime.
 
 This block is loaded **in full on every turn**, so it is governed by a character
@@ -96,14 +105,14 @@ reached 30,000 characters, a quarter of the whole block.
 
 ## Design principles
 - **Prefer fewer, higher-confidence entries.** Unsure it's stable? Skip it; wait for more evidence.
-- **Two layers.** `CLAUDE.md` is the budgeted view Claude loads every turn; the ledger is the detailed record with the *why*.
+- **Two layers.** The block is the budgeted view the agent loads every turn; the ledger is the detailed record with the *why*.
 - **Both layers need an exit, not just an entrance.** An append-only memory is just a slower leak.
 - **Idempotent.** Re-running over the same window produces no duplicates.
 - **Private.** Reads only local records; sends nothing over the network.
 
 ## Why not just use native auto-memory?
-Claude Code's built-in auto-memory records useful facts *opportunistically during a
-session*, scoped to *the project* ("the build command that works here"). This tool
+Built-in agent memory (for example Claude Code's auto-memory) records useful
+facts *opportunistically during a session*, scoped to *the project* ("the build command that works here"). This tool
 is complementary: it runs *between* sessions, looks *across all projects*, and
 builds a profile of *you* — communication style, recurring corrections, standing
 preferences — that no single session would surface.

@@ -1,44 +1,57 @@
-# claude-habit-distiller configuration
+# agent-habit-distiller configuration
 # Copy this file to one of:
-#   ~/.config/claude-habit-distiller/config.toml   (preferred)
+#   ~/.config/habit-distiller/config.toml            (preferred)
+#   ~/.config/claude-habit-distiller/config.toml     (legacy, still read)
 #   ./config.toml                                    (next to the skill)
 # All keys are optional; the values below are the built-in defaults.
+# Top-level keys apply to every agent; a [claude] or [codex] table at the
+# bottom overrides them for that agent only.
 
 # Language for distilled habits and the run summary. e.g. "en", "zh".
 language = "en"
 
-# Look-back window (days) used only when .last-run does not exist yet.
+# Look-back window (days) used only when there is no last-run state yet.
 window_days = 7
 
 # How many times a signal must appear before it counts as a stable habit.
 # Raise this to be stricter and store fewer, higher-confidence habits.
 min_occurrences = 2
 
-# Character budget for the CLAUDE.md "My Habits" block, and for any single entry.
-# Cap CHARACTERS, not lines: a line cap makes the model stuff new material into
-# existing lines, so the line count stays "compliant" while single entries grow
-# without bound. Measure with `wc -m` (bytes overstate CJK by ~2.4x).
+# Character budget for the "My Habits" block (in CLAUDE.md / AGENTS.md), and for
+# any single entry. Cap CHARACTERS, not lines: a line cap makes the model stuff
+# new material into existing lines, so the line count stays "compliant" while
+# single entries grow without bound. Measure with `wc -m` (bytes overstate CJK
+# by ~2.4x).
 max_block_chars = 25000
 max_entry_chars = 2000
 
 # DEPRECATED: line-count cap, kept so existing configs keep parsing. Ignored.
 # max_habits = 16
 
-# Whether to maintain the sentinel-managed habits block in the global CLAUDE.md.
-# Set to false if you only want the detailed per-habit memory files.
-write_global_claude_md = true
+# Whether to maintain the sentinel-managed habits block in the agent's global
+# instructions file (~/.claude/CLAUDE.md or ~/.codex/AGENTS.md).
+# Set to false if you only want the ledger. Legacy name: write_global_claude_md.
+write_global_instructions = true
 
-# Project directory names to skip entirely (as they appear under ~/.claude/projects/).
-# Useful for excluding sensitive or noisy repos.
+# Projects to skip entirely. For Claude these are directory names under
+# ~/.claude/projects/; for Codex, the session working directory (cwd).
 exclude_projects = []
 
 # Where the habit ledger lives.
-#   "auto" = ~/.claude/knowledge/habits/
-#   or set an absolute path, e.g. "/Users/alice/.claude/knowledge/habits"
+#   "auto" = <agent home>/knowledge/habits/  (~/.claude/... or ~/.codex/...)
+#   or an absolute path. Point both agents at the same path to share one ledger
+#   (the installer staggers their schedules so they never write at once).
 #
 # NOTE: this used to resolve to ~/.claude/projects/<home-project>/memory/.
 # That directory is isolated PER PROJECT DIRECTORY, so any session started from
 # a git worktree or a second checkout gets an empty one and can never read back
-# what was distilled. The ledger now lives at one fixed path instead. On first
-# run the skill migrates an existing legacy directory automatically.
+# what was distilled. On first run the skill migrates a legacy directory.
 memory_dir = "auto"
+
+# Other ledgers to consult read-only, e.g. the other agent's, so habits learned
+# in one agent can seed the other. Never written to.
+read_only_ledgers = []
+
+# Per-agent overrides, e.g. let Codex learn from what Claude already distilled:
+# [codex]
+# read_only_ledgers = ["~/.claude/knowledge/habits"]

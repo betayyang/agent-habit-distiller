@@ -1,49 +1,83 @@
 ---
 name: distill-habits
-description: Review recent Claude Code conversations, distill the user's stable habits and preferences, persist them into a long-term habit ledger, and maintain a "My Habits" block in the global CLAUDE.md within a character budget. The more you use Claude Code, the more it knows you. Trigger manually with /distill-habits, or on a schedule via the installed cron/launchd job.
+description: Review recent coding-agent conversations (Claude Code or Codex), distill the user's stable habits and preferences, persist them into a long-term habit ledger, and maintain a "My Habits" block in the agent's global instructions file (CLAUDE.md or AGENTS.md) within a character budget. The more you use the agent, the more it knows you. Trigger manually with /distill-habits (Claude Code) or $distill-habits (Codex), or on a schedule via the installed cron/launchd job.
 ---
 
 # distill-habits — automatic habit distillation
 
 Goal: extract the **stable habits / preferences / feedback** a user shows across sessions and turn them into a long-term asset, so every future conversation starts out knowing them. One-off task details are **not** distilled — only reusable patterns.
 
+## 0. Which agent am I running for?
+
+This one skill serves two agents. Everything below is written against the placeholders in this table — resolve them first and use only your column.
+
+- The headless runner states the agent explicitly in its prompt (`agent=claude` / `agent=codex`). That wins.
+- Otherwise: if you are Codex (invoked as `$distill-habits`, skill loaded from `~/.codex/skills/`), use **codex**; if you are Claude Code, use **claude**.
+
+| Placeholder | claude | codex |
+|---|---|---|
+| `<HOME>` | `$CLAUDE_CONFIG_DIR` or `~/.claude` | `$CODEX_HOME` or `~/.codex` |
+| `<INSTRUCTIONS>` (execution layer) | `<HOME>/CLAUDE.md` | `<HOME>/AGENTS.md` |
+| Transcripts | `<HOME>/projects/<project-dir>/*.jsonl`, one file per session | `<HOME>/sessions/YYYY/MM/DD/rollout-*.jsonl`, plus `<HOME>/archived_sessions/*.jsonl` |
+| Input history | `<HOME>/history.jsonl` — `display`, `timestamp` (ms), `project`, `sessionId` | `<HOME>/history.jsonl` — `text`, `ts` (s), `session_id` |
+| Project of a session | the `<project-dir>` folder name | `session_meta.payload.cwd` (first line of the file) |
+| Default ledger (`memory_dir = "auto"`) | `<HOME>/knowledge/habits/` | `<HOME>/knowledge/habits/` |
+| State dir | `<ledger>/.state/claude/` | `<ledger>/.state/codex/` |
+
+### Reading Codex transcripts correctly
+
+Codex rollout files are JSONL with a top-level `type` and a `payload`:
+
+- **The user's words**, per session:
+  - If the session has any `type=event_msg` with `payload.type=user_message`, use those (`payload.message`) and ignore `role=user` response items — they repeat the same text, so **don't count it twice**.
+  - Otherwise (older CLI versions only log the turn input), use `type=response_item`, `payload.role=user`, the `input_text` parts of `payload.content`. Drop parts that are context injected by the harness, not typed by the user: anything starting with `<` (`<environment_context>`, `<user_instructions>`, `<recommended_plugins>`, `<image …>`, `</image>`), `# AGENTS.md instructions for …`. IDE messages that start with `# Files mentioned by the user:` keep only the text after `## My request for Codex:`.
+  - `role=developer` items, `turn_context`, tool calls and tool output are never user preference.
+- The assistant's replies (`event_msg` / `agent_message`) are context only — use them to understand what the user was correcting or endorsing.
+- **Skip sub-agent sessions entirely**: if `session_meta.payload.source` is an object with a `subagent` key (e.g. `guardian` approval reviews, `thread_spawn` children), the "user" messages in it were written by an agent, not the user.
+- Sessions with `originator = codex_exec` are **kept** — wrappers and bots often relay real user messages through `codex exec`. The distiller's own runs are started with `--ephemeral` and leave no rollout file; if you ever see a session whose first user message starts with `[habit-distiller run]`, skip it.
+- Window by the per-line `timestamp` (ISO-8601 UTC); file mtime is only a coarse prefilter.
+
 ## Two layers (keep the responsibilities separate)
 
 | Layer | Location | How it loads | What belongs here |
 |---|---|---|---|
-| **Execution** | the sentinel block in `~/.claude/CLAUDE.md` | **loaded in full on every single turn** — has a hard character budget | The imperative. The one sentence the AI should just follow. |
+| **Execution** | the sentinel block in `<INSTRUCTIONS>` | **loaded in full on every single turn** — has a hard character budget | The imperative. The one sentence the AI should just follow. |
 | **Ledger** | `memory_dir` (see below) | read on demand, never auto-loaded | The Why, raw evidence, cases, dates, numbers, superseded conclusions, how a belief evolved |
 
 **Core invariant: evidence, cases, dates and specific numbers live in the ledger only.** If they show up in the execution layer, that is the signal to push them down.
 
-> **Why the ledger is not under `projects/<slug>/memory/`:** Claude Code isolates that directory *per project directory*. If a user works in git worktrees or multiple checkouts — most people do — every new working directory gets a fresh, empty memory dir, and everything ever distilled becomes unreadable. The ledger must live at a single fixed path instead.
+> **Why the ledger is not under Claude's `projects/<slug>/memory/`:** Claude Code isolates that directory *per project directory*. If a user works in git worktrees or multiple checkouts — most people do — every new working directory gets a fresh, empty memory dir, and everything ever distilled becomes unreadable. The ledger must live at a single fixed path instead.
 
 ## Paths and config
 
-Config is read from `~/.config/claude-habit-distiller/config.toml` (or `./config.toml`), falling back to the built-in defaults.
+Config is read from the first file that exists: `~/.config/habit-distiller/config.toml`, `~/.config/claude-habit-distiller/config.toml` (legacy), `./config.toml`. Missing keys fall back to the built-in defaults. Top-level keys apply to both agents; a `[claude]` or `[codex]` table overrides them for that agent only.
 
-- Conversation transcripts: `~/.claude/projects/<project-dir>/*.jsonl` (one file per session, across all projects)
-- User input history: `~/.claude/history.jsonl` (each line has `display` / `timestamp` (ms) / `project` / `sessionId`)
-- **Habit ledger**: `memory_dir`. When `"auto"`, use `~/.claude/knowledge/habits/`, with `INDEX.md` as its index. **Do not** resolve `"auto"` to a per-project memory dir — see the note above.
-- **Execution layer**: the sentinel-managed region in `~/.claude/CLAUDE.md`
-- Last-run timestamp: `<skill-dir>/.last-run` (Unix seconds; if absent, look back `window_days`)
-- Audit cursor: `<skill-dir>/.last-audit`
+- **Habit ledger**: `memory_dir`. When `"auto"`, use the default ledger from the table above, with `INDEX.md` as its index. **Do not** resolve `"auto"` to a per-project memory dir.
+- **Read-only ledgers**: `read_only_ledgers` (list of paths, default empty). Other ledgers — typically the other agent's — that you may consult when deciding whether a signal is already known or stable. Never write to them. If you carry a conclusion over, write it into your own ledger with a `source:` line naming the file it came from.
+- **Execution layer**: the sentinel-managed region in `<INSTRUCTIONS>`.
+- Last-run timestamp: `<state>/last-run` (Unix seconds; if absent, look back `window_days`).
+- Audit cursor: `<state>/last-audit`.
 
-### Migrating an existing install
+State lives next to the ledger, not in the skill directory, because the skill directory is shared by both agents (and may be read-only to a sandboxed run).
 
-If `memory_dir` resolves to `auto` and `~/.claude/knowledge/habits/` does not exist yet, but a legacy `~/.claude/projects/<home-project-dir>/memory/` does: move the `.md` files over, rename `MEMORY.md` to `INDEX.md`, and leave a short pointer file behind at the old path. Do this once, report it, and carry on.
+### Migrating an existing install (claude only)
+
+Do each of these once, report it, and carry on:
+
+- If `memory_dir` resolves to `auto` and `<HOME>/knowledge/habits/` does not exist yet, but a legacy `<HOME>/projects/<home-project-dir>/memory/` does: move the `.md` files over, rename `MEMORY.md` to `INDEX.md`, and leave a short pointer file behind at the old path.
+- If `<state>/last-run` does not exist but `<skill-dir>/.last-run` does: move `.last-run` and `.last-audit` into `<state>/` (dropping the leading dot).
 
 ## Character budget (hard constraint — it outranks "record one more thing")
 
 ```
-max_block_chars = 25000   # whole CLAUDE.md habits block
+max_block_chars = 25000   # whole habits block
 max_entry_chars = 2000    # any single habit line
 ```
 
 Measure **in characters, not bytes** — `wc -c` overstates CJK text by roughly 2.4x and will make a compliant block look 8x over budget:
 
 ```
-awk '/^<!-- BEGIN habit-distiller/,/^<!-- END habit-distiller/' ~/.claude/CLAUDE.md | wc -m
+awk '/^<!-- BEGIN habit-distiller/,/^<!-- END habit-distiller/' <INSTRUCTIONS> | wc -m
 ```
 
 These are ceilings, not targets. If 15,000 characters says it, don't write 25,000.
@@ -53,12 +87,12 @@ These are ceilings, not targets. If 15,000 characters says it, don't write 25,00
 ## Steps
 
 ### 1. Determine the window
-Read `.last-run` (Unix seconds). If absent, start = `window_days` ago. End = now.
+Read `<state>/last-run` (Unix seconds). If absent, start = `window_days` ago. End = now.
 
 ### 2. Collect material from the window
-- Find `*.jsonl` transcripts modified after the window start, across **all** project dirs (skip anything in `exclude_projects`).
+- Find transcripts with activity after the window start, across **all** projects (skip anything in `exclude_projects` — matched against the claude project-dir name, or against the codex session `cwd`).
 - Read them for: **user messages**, corrections the user gave, preferences they repeated, and approaches they explicitly endorsed.
-- Also scan `history.jsonl` `display` entries in the window for what they ask about most and in what language.
+- Also scan in-window input-history entries for what they ask about most and in what language.
 - With a lot of material, prioritize the most recent and highest-signal; you do not have to read every file end to end.
 
 ### 3. Distill (this is the core judgment)
@@ -86,6 +120,7 @@ In `memory_dir`:
   <the fact itself. For feedback/project, append **Why:** and **How to apply:** lines. Link related entries with [[other-name]].>
   ```
 - Add/update a pointer line in `INDEX.md`: `- [Title](file.md) — hook`.
+- If two agents share one ledger (`memory_dir` set to the same path for both), re-read `INDEX.md` right before writing it and merge rather than overwrite.
 
 ### 4.5 Ledger hygiene (the ledger needs an exit too, or you've just moved the bloat)
 
@@ -101,17 +136,17 @@ When splitting, leave a "topics split out → [[new-file]]" line at the bottom o
 
 New material alone will never trigger a deletion, so run a rotating audit on top of it:
 
-- Take the **3 longest** entries plus the **3 after the last audit position** (stored in `.last-audit`; wrap around at the end).
+- Take the **3 longest** entries plus the **3 after the last audit position** (stored in `<state>/last-audit`; wrap around at the end).
 - For each, ask:
   1. Does it contain a claim that later facts have **superseded**? → remove that claim from the execution layer; the history stays in the ledger.
   2. Does it contain **evidence / cases / dates / numbers**? → push those down to the ledger, keep only the imperative.
   3. Is it over `max_entry_chars`? → it must be split: either push detail down, or break it into two independent habits.
 - **Never delete without positive evidence that it's stale.** When in doubt, leave it and re-audit later.
-- Write the new cursor back to `.last-audit`.
+- Write the new cursor back to `<state>/last-audit`.
 
-### 6. Maintain the execution layer (the CLAUDE.md block)
+### 6. Maintain the execution layer (the habits block)
 
-Only if `write_global_claude_md = true`. Write the currently most useful habits between the sentinels. **Only rewrite what's between the two markers**; leave the rest of the file untouched.
+Only if `write_global_instructions = true` (legacy name: `write_global_claude_md`). Write the currently most useful habits between the sentinels in `<INSTRUCTIONS>`. **Only rewrite what's between the two markers**; leave the rest of the file untouched. If the file or the block does not exist yet, create it.
 
 ```
 <!-- BEGIN habit-distiller (auto-managed · do not edit this block by hand) -->
@@ -122,9 +157,9 @@ Only if `write_global_claude_md = true`. Write the currently most useful habits 
 <!-- END habit-distiller -->
 ```
 
-Keep this pointer as the **first line** of the block:
+Keep this pointer as the **first line** of the block (with your actual ledger path):
 ```
-- Habit ledger lives in `~/.claude/knowledge/habits/` (index: INDEX.md). This block holds decision rules only — read the ledger for the Why, the evidence and the cases.
+- Habit ledger lives in `<ledger>` (index: INDEX.md). This block holds decision rules only — read the ledger for the Why, the evidence and the cases.
 ```
 
 Rules:
@@ -135,7 +170,7 @@ Rules:
 
 #### 6.1 Zero net growth (must hold on every run)
 
-**The block must not be larger after the run than it was before.** To fold a new signal into an existing entry, push an equivalent amount of evidence out of that same entry and into the ledger. If you can't, the signal isn't ready for the execution layer — leave it in the ledger.
+On the very first run there is no block yet: create a lean one well within budget. After that, **the block must not be larger after the run than it was before.** To fold a new signal into an existing entry, push an equivalent amount of evidence out of that same entry and into the ledger. If you can't, the signal isn't ready for the execution layer — leave it in the ledger.
 
 #### 6.2 Over budget
 
@@ -150,23 +185,23 @@ Measure the block after writing:
 **Hard rule: any text removed from the execution layer must land in a ledger file first.** Nothing may simply disappear. Report each trim as "entry N: X chars → Y chars, original text now in \<file\>".
 
 ### 7. Wrap up
-- Write current Unix seconds into `.last-run`.
+- Write current Unix seconds into `<state>/last-run`.
 - Report (in `language`):
-  - how many sessions were scanned
+  - which agent, and how many sessions were scanned
   - ledger files added / updated / deleted
   - **block characters: before → after / limit**, and whether zero net growth held
   - which entries were audited this run, and what was pushed down or deleted
   - **ledger health**: total size, any mixed-topic files, anything split or archived
   - the strongest signal of the run
 
-## Compact mode (`/distill-habits --compact`, manual only)
+## Compact mode (`--compact`, manual only)
 
 For an execution layer that is already far over budget. **Never run this from the scheduled job:**
 
-1. Back up: `cp ~/.claude/CLAUDE.md ~/.claude/.backup-CLAUDE-$(date +%Y%m%d%H%M%S).md`
+1. Back up: `cp <INSTRUCTIONS> <HOME>/.backup-$(basename <INSTRUCTIONS> .md)-$(date +%Y%m%d%H%M%S).md`
 2. Rewrite entry by entry: keep the decision rule and any negative constraints; push everything else into the matching ledger file (create it if needed).
 3. Produce a **preview**: a table of "entry → old chars → new chars → which ledger file took the detail", plus the full rewritten block.
-4. **Show the preview to the user and wait for approval before touching CLAUDE.md.**
+4. **Show the preview to the user and wait for approval before touching `<INSTRUCTIONS>`.**
 
 ## Principles
 - Prefer fewer, higher-confidence entries: unsure whether it's a stable habit? Skip it; wait for more evidence.

@@ -3,12 +3,14 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.claude.habit-distiller</string>
+    <string>__LABEL__</string>
 
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
         <string>__RUN_SH__</string>
+        <string>--agent</string>
+        <string>__AGENT__</string>
     </array>
 
     <key>StartCalendarInterval</key>
@@ -26,9 +28,9 @@
     </dict>
 
     <key>StandardOutPath</key>
-    <string>__SKILL_DIR__/launchd.out.log</string>
+    <string>__SKILL_DIR__/launchd-__AGENT__.out.log</string>
     <key>StandardErrorPath</key>
-    <string>__SKILL_DIR__/launchd.err.log</string>
+    <string>__SKILL_DIR__/launchd-__AGENT__.err.log</string>
 
     <key>RunAtLoad</key>
     <false/>
