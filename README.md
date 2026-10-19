@@ -117,7 +117,7 @@ Uninstall (leaves your ledger + habits blocks in place):
   markers and ledger path are unchanged, so nothing is lost.
 - Run state (`last-run`, `last-audit`) and logs moved from the skill directory to
   `<ledger>/.state/<agent>/`, because the skill directory is now shared by both
-  agents. The skill moves your old `.last-run` / `.last-audit` on its next run.
+  agents. The runner moves your old `.last-run` / `.last-audit` on its next run.
 - The config path is now `~/.config/habit-distiller/config.toml`; the old
   `~/.config/claude-habit-distiller/config.toml` is still read.
 - `write_global_claude_md` is now `write_global_instructions` (old name still honoured).
@@ -143,9 +143,15 @@ Two notes if you installed an earlier version:
 
 ## Optional: notify on each run
 
-Set `HABIT_DISTILLER_WEBHOOK` to a URL and the runner will POST a
-`{"text": "..."}` summary after each run (Slack/Discord/Feishu-compatible).
-Unset by default — nothing is sent anywhere.
+Set `HABIT_DISTILLER_WEBHOOK` to a URL and the runner will POST the run summary
+after each run, failed runs included. The body is picked from the URL's host:
+Feishu/Lark (`{"msg_type":"text",...}`), Discord (`{"content": ...}`), anything else
+`{"text": ...}` (Slack and most generic receivers). Unset by default — nothing is
+sent anywhere. To have the scheduled job use it, set it when installing:
+
+```bash
+HABIT_DISTILLER_WEBHOOK=https://... ./install/install.sh --agent codex
+```
 
 ## Privacy
 

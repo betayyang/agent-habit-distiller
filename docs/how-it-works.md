@@ -95,7 +95,9 @@ same entry and into the ledger. Anything removed from the block must land in a
 ledger file first — nothing may simply disappear.
 
 Measure the block in **characters, not bytes**: `wc -c` overstates CJK text by
-roughly 2.4x, which is enough to make a compliant block look 8x over budget.
+roughly 2.4x, which is enough to make a compliant block look 8x over budget. `wc -m`
+is no safer under launchd or cron: they start with no locale, so it counts bytes
+as well. Both the runner and the skill count with Python instead.
 
 Why the budget exists: capping the *number of entries* (the old `max_habits`) is
 the wrong axis. In one real 98-day run the block went from 13 entries to 51 while

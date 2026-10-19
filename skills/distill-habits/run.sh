@@ -80,15 +80,25 @@ PY
 )"
 STATE_DIR="$LEDGER/.state/$AGENT"
 mkdir -p "$STATE_DIR"
-LOG="$STATE_DIR/run.log"
+
+# Pre-codex installs kept run state in the skill dir. Move it once, here rather
+# than in the prompt, so the window carries over exactly.
+for f in last-run last-audit; do
+  if [[ ! -f "$STATE_DIR/$f" && -f "$SKILL_DIR/.$f" ]]; then
+    mv "$SKILL_DIR/.$f" "$STATE_DIR/$f"
+  fi
+done
+LOG="$STATE_DIR/run.log"            # a few lines per run, appended
+EXEC_LOG="$STATE_DIR/last-exec.log" # the agent's full output, overwritten each run
 OUT="$STATE_DIR/last-summary.txt"
 
 # Measure the habits block independently of what the model reports about itself.
-# Characters, not bytes: `wc -c` overstates CJK by ~2.4x.
+# Characters, not bytes: `wc -c` overstates CJK by ~2.4x, and so does `wc -m`
+# under launchd/cron, which start with no locale (C) and make it count bytes.
 block_chars() {
   [[ -f "$INSTRUCTIONS" ]] || { echo 0; return; }
   awk '/^<!-- BEGIN habit-distiller/,/^<!-- END habit-distiller/' "$INSTRUCTIONS" \
-    | wc -m | tr -d ' '
+    | python3 -c 'import sys; print(len(sys.stdin.buffer.read().decode("utf-8", "replace")))'
 }
 
 echo "===== $(date '+%Y-%m-%d %H:%M:%S') distill start (agent=$AGENT) =====" >>"$LOG"
@@ -106,14 +116,16 @@ must not be larger after the run than before; (2) evidence, cases, dates and \
 numbers belong in the ledger, the block holds decision rules only; (3) this is a \
 scheduled run, so never execute compact mode -- if the block is far over budget, \
 warn instead of rewriting it wholesale; (4) any text removed from the block must \
-land in a ledger file first. Keep the report under 30 lines: agent, sessions \
+land in a ledger file first; (5) block-size.tsv and run.log belong to this \
+runner and the run report goes only in your final message -- do not write them, \
+and do not create run or audit records in the ledger. Keep the report under 30 lines: agent, sessions \
 scanned, ledger adds/updates/deletes, block characters (before -> after / limit) \
 and whether zero net growth held, which entries were audited, and the strongest signal."
 
 set +e
 if [[ "$AGENT" == claude ]]; then
   # Unattended, so skip interactive permission prompts.
-  claude -p "$PROMPT" --dangerously-skip-permissions >"$OUT" 2>>"$LOG"
+  claude -p "$PROMPT" --dangerously-skip-permissions >"$OUT" 2>"$EXEC_LOG"
   EXIT=$?
 else
   # Sandboxed instead of bypassed: everything the run writes is under CODEX_HOME
@@ -123,7 +135,7 @@ else
   [[ "$LEDGER" == "$AGENT_HOME"/* ]] || ADD_DIR=(--add-dir "$LEDGER")
   "$CODEX" exec --ephemeral --skip-git-repo-check --color never \
     -C "$AGENT_HOME" -s workspace-write ${ADD_DIR[@]+"${ADD_DIR[@]}"} \
-    -o "$OUT" "$PROMPT" </dev/null >>"$LOG" 2>&1
+    -o "$OUT" "$PROMPT" </dev/null >"$EXEC_LOG" 2>&1
   EXIT=$?
 fi
 set -e
@@ -140,16 +152,28 @@ printf '%s\t%s\t%s\t%s\n' "$(date '+%Y-%m-%d')" "$BEFORE" "$AFTER" "$DELTA" \
 # Optional webhook notification.
 if [[ -n "${HABIT_DISTILLER_WEBHOOK:-}" ]]; then
   if [[ -s "$OUT" ]]; then TEXT="$(cat "$OUT")"; else
-    TEXT="distill-habits finished (exit=$EXIT) but produced no report; see $LOG"; fi
-  HEADER="habit-distiller[$AGENT] $(date '+%Y-%m-%d %H:%M') | block ${BEFORE}->${AFTER} chars ${GROWTH}"
+    TEXT="distill-habits finished (exit=$EXIT) but produced no report; see $EXEC_LOG"; fi
+  STATUS="ok"; [[ $EXIT -ne 0 ]] && STATUS="FAILED exit=$EXIT"
+  HEADER="habit-distiller[$AGENT] $STATUS $(date '+%Y-%m-%d %H:%M') | block ${BEFORE}->${AFTER} chars ${GROWTH}"
   python3 - "$HABIT_DISTILLER_WEBHOOK" "$HEADER" "$TEXT" >>"$LOG" 2>&1 <<'PY'
 import json, sys, urllib.request
 url, header, text = sys.argv[1], sys.argv[2], sys.argv[3]
-payload = json.dumps({"text": f"{header}\n\n{text}"}).encode("utf-8")
-req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+from urllib.parse import urlparse
+msg = f"{header}\n\n{text}"
+host = urlparse(url).hostname or ""
+# Each service wants its own body; a generic {"text"} is rejected by Feishu/Lark
+# and Discord.
+if host.endswith(("feishu.cn", "larksuite.com", "larkoffice.com")):
+    body = {"msg_type": "text", "content": {"text": msg}}
+elif host.endswith(("discord.com", "discordapp.com")):
+    body = {"content": msg[:2000]}
+else:  # Slack and most generic webhooks
+    body = {"text": msg}
+req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"),
+                             headers={"Content-Type": "application/json"})
 try:
     resp = urllib.request.urlopen(req, timeout=15)
-    print("webhook result:", resp.read().decode("utf-8"))
+    print("webhook result:", resp.status, resp.read().decode("utf-8")[:300])
 except Exception as e:
     print("webhook failed:", e)
 PY

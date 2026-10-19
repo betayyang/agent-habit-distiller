@@ -57,6 +57,7 @@ Config is read from the first file that exists: `~/.config/habit-distiller/confi
 - **Execution layer**: the sentinel-managed region in `<INSTRUCTIONS>`.
 - Last-run timestamp: `<state>/last-run` (Unix seconds; if absent, look back `window_days`).
 - Audit cursor: `<state>/last-audit`.
+- Also in `<state>/`, owned by the headless runner — **never write these yourself**: `run.log`, `last-exec.log`, `last-summary.txt`, `block-size.tsv`.
 
 State lives next to the ledger, not in the skill directory, because the skill directory is shared by both agents (and may be read-only to a sandboxed run).
 
@@ -65,7 +66,7 @@ State lives next to the ledger, not in the skill directory, because the skill di
 Do each of these once, report it, and carry on:
 
 - If `memory_dir` resolves to `auto` and `<HOME>/knowledge/habits/` does not exist yet, but a legacy `<HOME>/projects/<home-project-dir>/memory/` does: move the `.md` files over, rename `MEMORY.md` to `INDEX.md`, and leave a short pointer file behind at the old path.
-- If `<state>/last-run` does not exist but `<skill-dir>/.last-run` does: move `.last-run` and `.last-audit` into `<state>/` (dropping the leading dot).
+- Legacy run state (`.last-run` / `.last-audit` in the skill directory) is moved into `<state>/` by the headless runner before you start; you don't need to do it.
 
 ## Character budget (hard constraint — it outranks "record one more thing")
 
@@ -74,10 +75,11 @@ max_block_chars = 25000   # whole habits block
 max_entry_chars = 2000    # any single habit line
 ```
 
-Measure **in characters, not bytes** — `wc -c` overstates CJK text by roughly 2.4x and will make a compliant block look 8x over budget:
+Measure **in characters, not bytes** — `wc -c` overstates CJK text by roughly 2.4x and will make a compliant block look 8x over budget. Don't rely on `wc -m` either: in a shell with no locale (launchd, cron, many sandboxes) it silently counts bytes too. Count with Python:
 
 ```
-awk '/^<!-- BEGIN habit-distiller/,/^<!-- END habit-distiller/' <INSTRUCTIONS> | wc -m
+awk '/^<!-- BEGIN habit-distiller/,/^<!-- END habit-distiller/' <INSTRUCTIONS> \
+  | python3 -c 'import sys; print(len(sys.stdin.buffer.read().decode("utf-8")))'
 ```
 
 These are ceilings, not targets. If 15,000 characters says it, don't write 25,000.
@@ -120,6 +122,7 @@ In `memory_dir`:
   <the fact itself. For feedback/project, append **Why:** and **How to apply:** lines. Link related entries with [[other-name]].>
   ```
 - Add/update a pointer line in `INDEX.md`: `- [Title](file.md) — hook`.
+- **The ledger holds habits only.** Never create run logs, audit records or "nothing changed today" notes in it — not in `archive/` either. What happened in a run belongs in the report (step 7), which the runner stores in `<state>/`.
 - If two agents share one ledger (`memory_dir` set to the same path for both), re-read `INDEX.md` right before writing it and merge rather than overwrite.
 
 ### 4.5 Ledger hygiene (the ledger needs an exit too, or you've just moved the bloat)

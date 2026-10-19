@@ -20,8 +20,8 @@ min_occurrences = 2
 # Character budget for the "My Habits" block (in CLAUDE.md / AGENTS.md), and for
 # any single entry. Cap CHARACTERS, not lines: a line cap makes the model stuff
 # new material into existing lines, so the line count stays "compliant" while
-# single entries grow without bound. Measure with `wc -m` (bytes overstate CJK
-# by ~2.4x).
+# single entries grow without bound. Counted in characters with Python: bytes
+# overstate CJK by ~2.4x, and `wc -m` counts bytes in a shell with no locale.
 max_block_chars = 25000
 max_entry_chars = 2000
 

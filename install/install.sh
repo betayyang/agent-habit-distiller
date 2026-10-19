@@ -14,6 +14,8 @@
 #   CLAUDE_CONFIG_DIR   Claude home (default: ~/.claude)
 #   CODEX_HOME          Codex home (default: ~/.codex)
 #   CODEX_BIN           path to the codex CLI, if it is not on PATH
+#   HABIT_DISTILLER_WEBHOOK  if set, baked into the scheduled job so each run
+#                            (failed ones included) posts its summary there
 
 set -euo pipefail
 
@@ -121,12 +123,19 @@ for AGENT in $AGENTS; do
     Darwin)
       PLIST_DST="$HOME/Library/LaunchAgents/$LABEL.plist"
       render "$REPO_DIR/install/habit-distiller.plist.tpl" >"$PLIST_DST"
+      if [[ -n "${HABIT_DISTILLER_WEBHOOK:-}" ]]; then
+        /usr/libexec/PlistBuddy -c \
+          "Add :EnvironmentVariables:HABIT_DISTILLER_WEBHOOK string $HABIT_DISTILLER_WEBHOOK" "$PLIST_DST"
+        echo "[$AGENT] webhook notification enabled"
+      fi
       launchctl unload "$PLIST_DST" 2>/dev/null || true
       launchctl load "$PLIST_DST"
       echo "[$AGENT] scheduled via launchd at $A_HOUR:$(printf '%02d' "$A_MINUTE") daily -> $PLIST_DST"
       ;;
     Linux)
       LINE="$(render "$REPO_DIR/install/crontab.tpl" | grep -v '^#')"
+      [[ -n "${HABIT_DISTILLER_WEBHOOK:-}" ]] && \
+        LINE="${LINE/PATH=/HABIT_DISTILLER_WEBHOOK=$HABIT_DISTILLER_WEBHOOK PATH=}"
       # Drop this agent's previous entry (and, for claude, the pre-codex one without --agent).
       ( crontab -l 2>/dev/null \
           | grep -v "habit-distiller ($AGENT)\|distill-habits/run.sh --agent $AGENT" \
