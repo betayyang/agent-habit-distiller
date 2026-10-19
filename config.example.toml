@@ -50,6 +50,9 @@ memory_dir = "auto"
 
 # Other ledgers to consult read-only, e.g. the other agent's, so habits learned
 # in one agent can seed the other. Never written to.
+# Note: whatever the run reads is sent to that agent's model provider, so giving
+# Codex your Claude ledger sends it to OpenAI (and vice versa). Check the ledger
+# for anything secret (e.g. webhook URLs) before pointing another agent at it.
 read_only_ledgers = []
 
 # Per-agent overrides, e.g. let Codex learn from what Claude already distilled:

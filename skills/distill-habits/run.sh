@@ -6,7 +6,8 @@
 #
 # Env:
 #   HABIT_DISTILLER_AGENT    default agent when --agent is not given (claude|codex)
-#   HABIT_DISTILLER_WEBHOOK  optional URL; the run summary is POSTed as {"text": "..."}
+#   HABIT_DISTILLER_WEBHOOK  optional URL; the run summary is POSTed there, in the
+#                            body format of Feishu/Lark, Discord or Slack (by host)
 #   CLAUDE_CONFIG_DIR        Claude home (default ~/.claude)
 #   CODEX_HOME               Codex home (default ~/.codex)
 #   CODEX_BIN                path to the codex CLI, if it is not on PATH
@@ -88,6 +89,21 @@ for f in last-run last-audit; do
     mv "$SKILL_DIR/.$f" "$STATE_DIR/$f"
   fi
 done
+# One run per ledger at a time: a manual run and a scheduled one, or two agents
+# sharing a ledger, must not write INDEX.md at once. A lock left by a killed
+# run is reclaimed once its pid is gone.
+LOCK="$LEDGER/.state/lock"
+if ! mkdir "$LOCK" 2>/dev/null; then
+  if kill -0 "$(cat "$LOCK/pid" 2>/dev/null)" 2>/dev/null; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') skipped (agent=$AGENT): another run holds $LOCK" \
+      >>"$STATE_DIR/run.log"
+    exit 0
+  fi
+  rm -rf "$LOCK"; mkdir "$LOCK"
+fi
+echo $$ >"$LOCK/pid"
+trap 'rm -rf "$LOCK"' EXIT
+
 LOG="$STATE_DIR/run.log"            # a few lines per run, appended
 EXEC_LOG="$STATE_DIR/last-exec.log" # the agent's full output, overwritten each run
 OUT="$STATE_DIR/last-summary.txt"
@@ -121,6 +137,10 @@ runner and the run report goes only in your final message -- do not write them, 
 and do not create run or audit records in the ledger. Keep the report under 30 lines: agent, sessions \
 scanned, ledger adds/updates/deletes, block characters (before -> after / limit) \
 and whether zero net growth held, which entries were audited, and the strongest signal."
+
+# `codex exec -o` leaves the file untouched when the run fails, which would
+# resend the previous report under a FAILED header. Start from empty.
+: >"$OUT"
 
 set +e
 if [[ "$AGENT" == claude ]]; then

@@ -110,7 +110,7 @@ reached 30,000 characters, a quarter of the whole block.
 - **Two layers.** The block is the budgeted view the agent loads every turn; the ledger is the detailed record with the *why*.
 - **Both layers need an exit, not just an entrance.** An append-only memory is just a slower leak.
 - **Idempotent.** Re-running over the same window produces no duplicates.
-- **Private.** Reads only local records; sends nothing over the network.
+- **Private by construction, not network-silent.** Reads only local records and keeps its output in local files; the one thing that leaves the machine is what the distillation run itself sends to your agent's model provider (plus the optional webhook report).
 
 ## Why not just use native auto-memory?
 Built-in agent memory (for example Claude Code's auto-memory) records useful

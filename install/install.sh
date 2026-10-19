@@ -135,8 +135,10 @@ for AGENT in $AGENTS; do
       ;;
     Linux)
       LINE="$(render "$REPO_DIR/install/crontab.tpl" | grep -v '^#')"
+      # Quoted for sh (URLs carry & and ?); % escaped because cron turns a bare %
+      # into a newline.
       [[ -n "${HABIT_DISTILLER_WEBHOOK:-}" ]] && \
-        LINE="${LINE/PATH=/HABIT_DISTILLER_WEBHOOK=$HABIT_DISTILLER_WEBHOOK PATH=}"
+        LINE="${LINE/PATH=/HABIT_DISTILLER_WEBHOOK='${HABIT_DISTILLER_WEBHOOK//%/\\%}' PATH=}"
       # Drop this agent's previous entry (and, for claude, the pre-codex one without --agent).
       ( crontab -l 2>/dev/null \
           | grep -v "habit-distiller ($AGENT)\|distill-habits/run.sh --agent $AGENT" \

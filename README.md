@@ -1,6 +1,6 @@
 # agent-habit-distiller
 
-**The more you use your coding agent, the more it knows you. Works with Claude Code and Codex. 100% local — no server, no API, no data leaves your machine.**
+**The more you use your coding agent, the more it knows you. Works with Claude Code and Codex. No server, no extra service: plain local files, and the only model calls are the ones your agent already makes.**
 
 `agent-habit-distiller` (formerly `claude-habit-distiller`) is a scheduled
 *reflection job* for [Claude Code](https://claude.com/claude-code) and
@@ -81,6 +81,17 @@ See [`docs/how-it-works.md`](docs/how-it-works.md) for the full design and
 
 ## Install (30 seconds)
 
+Requirements:
+
+- `bash` and **`python3`** (3.9+; standard library only). On macOS, `/usr/bin/python3`
+  is a stub until the Xcode Command Line Tools are installed (`xcode-select --install`);
+  without them the scheduled job fails before it starts.
+- The CLI of each agent you install for: `claude` (Claude Code) and/or `codex`.
+- Tested with Claude Code 2.1.278 and codex-cli 0.153.4 on macOS. The runner depends
+  on `codex exec` flags (`--ephemeral`, `-o`, `-s workspace-write`) and on the
+  transcript formats, which neither vendor documents as stable. The Linux (cron)
+  path is written but **not yet tested**; Windows is not supported.
+
 ```bash
 git clone https://github.com/betayyang/agent-habit-distiller.git
 cd agent-habit-distiller
@@ -153,13 +164,21 @@ sent anywhere. To have the scheduled job use it, set it when installing:
 HABIT_DISTILLER_WEBHOOK=https://... ./install/install.sh --agent codex
 ```
 
-## Privacy
+## Privacy and safety
 
-This tool reads **only your local files** under `~/.claude` / `~/.codex` and makes
-**no network requests** of its own (unless you opt into the webhook above). It
-never uploads your conversations beyond the model calls your agent already makes.
-Because it reads your entire conversation history, review [`PRIVACY.md`](PRIVACY.md)
-and decide how sensitive your local logs are before use.
+- **Where your data goes.** The tool runs no server of its own, but the distillation
+  *is* a model call: the transcripts it reads are sent to the provider of the agent
+  doing the run (Anthropic for Claude Code, OpenAI for Codex), the same way your
+  normal sessions are. If you point `read_only_ledgers` at the other agent's ledger,
+  that ledger goes to this provider too — for example, Codex reading your Claude
+  ledger sends it to OpenAI.
+- **Unattended runs have write access.** The scheduled Claude run uses
+  `--dangerously-skip-permissions`, so it can write anywhere your user can. The Codex
+  run is sandboxed, but to `~/.codex` as a whole (including its config). Transcripts
+  can contain text from web pages or tool output; a prompt-injection in there would
+  run with those permissions. If that's not acceptable, install with `--no-schedule`
+  and run `/distill-habits` / `$distill-habits` interactively instead.
+- See [`PRIVACY.md`](PRIVACY.md) for exactly what is read and written.
 
 ## License
 

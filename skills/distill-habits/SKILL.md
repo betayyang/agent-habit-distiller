@@ -210,4 +210,4 @@ For an execution layer that is already far over budget. **Never run this from th
 - Prefer fewer, higher-confidence entries: unsure whether it's a stable habit? Skip it; wait for more evidence.
 - Layering: the execution layer holds decisions, the ledger holds the reasons. Both need an exit, not just an entrance.
 - Idempotent: re-running over the same window must not create duplicates.
-- Privacy: only reads the user's own local records; nothing is sent anywhere.
+- Privacy: only reads the user's own local records. Everything you read goes to your model provider, so never copy secrets you come across (tokens, webhook URLs, passwords) into the ledger or the block.
