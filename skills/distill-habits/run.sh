@@ -155,9 +155,11 @@ if [[ -n "${HABIT_DISTILLER_WEBHOOK:-}" ]]; then
     TEXT="distill-habits finished (exit=$EXIT) but produced no report; see $EXEC_LOG"; fi
   STATUS="ok"; [[ $EXIT -ne 0 ]] && STATUS="FAILED exit=$EXIT"
   HEADER="habit-distiller[$AGENT] $STATUS $(date '+%Y-%m-%d %H:%M') | block ${BEFORE}->${AFTER} chars ${GROWTH}"
-  python3 - "$HABIT_DISTILLER_WEBHOOK" "$HEADER" "$TEXT" >>"$LOG" 2>&1 <<'PY'
-import json, sys, urllib.request
-url, header, text = sys.argv[1], sys.argv[2], sys.argv[3]
+  # The URL stays in the environment: argv is visible to every local user via ps.
+  python3 - "$HEADER" "$TEXT" >>"$LOG" 2>&1 <<'PY'
+import json, os, sys, urllib.request
+url = os.environ["HABIT_DISTILLER_WEBHOOK"]
+header, text = sys.argv[1], sys.argv[2]
 from urllib.parse import urlparse
 msg = f"{header}\n\n{text}"
 host = urlparse(url).hostname or ""

@@ -126,6 +126,7 @@ for AGENT in $AGENTS; do
       if [[ -n "${HABIT_DISTILLER_WEBHOOK:-}" ]]; then
         /usr/libexec/PlistBuddy -c \
           "Add :EnvironmentVariables:HABIT_DISTILLER_WEBHOOK string $HABIT_DISTILLER_WEBHOOK" "$PLIST_DST"
+        chmod 600 "$PLIST_DST"   # the webhook URL is a credential
         echo "[$AGENT] webhook notification enabled"
       fi
       launchctl unload "$PLIST_DST" 2>/dev/null || true
