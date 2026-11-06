@@ -108,7 +108,12 @@ Only distill things that are **stable and reusable**, in four categories matchin
 
 ### 4. Write to the ledger (with provenance, no length limit)
 In `memory_dir`:
-- **Check for duplicates first** — if a file already covers it, **update** that file (add evidence, raise confidence) instead of creating a near-duplicate.
+- **Check for duplicates first** — `INDEX.md` has a trigger-word table at the top (columns: `slug | type | triggers`). Grep it for keywords from the signal before scanning filenames:
+  ```bash
+  grep "keyword" <memory_dir>/INDEX.md
+  ```
+  The first column of a matching row is the slug; `Read` that file to confirm it covers the signal. If it does, **update** that file (add evidence, raise confidence). If no match, create a new file.
+- When creating or updating a file, also **update the trigger table in `INDEX.md`**: add or edit the row `| slug | type | triggers |` with at least 3 keywords that describe when this habit applies. The trigger table is the top section of `INDEX.md`, before the narrative index.
 - When a conclusion is **superseded**, keep the history in the ledger ("X was replaced by Y on <date>, because Z") but leave only the current conclusion in the execution layer.
 - File format:
   ```markdown
