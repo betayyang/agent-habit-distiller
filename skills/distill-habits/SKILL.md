@@ -46,7 +46,9 @@ Codex rollout files are JSONL with a top-level `type` and a `payload`:
 
 **Core invariant: evidence, cases, dates and specific numbers live in the ledger only.** If they show up in the execution layer, that is the signal to push them down.
 
-> **Why the ledger is not under Claude's `projects/<slug>/memory/`:** Claude Code isolates that directory *per project directory*. If a user works in git worktrees or multiple checkouts — most people do — every new working directory gets a fresh, empty memory dir, and everything ever distilled becomes unreadable. The ledger must live at a single fixed path instead.
+> **Why the ledger is not Claude Code's auto-memory directory:** by default that directory is `projects/<slug>/memory/`, isolated *per project directory*, so a session started from a git worktree or a second checkout sees an empty one. Claude Code's `autoMemoryDirectory` setting can pin it to one path, but the ledger still stays separate: auto-memory is written mid-session by the agent, with no character budget, no audit and no evidence trail, and its `MEMORY.md` index is loaded every turn. Mixing the two would put unaudited notes into the budgeted, audited store.
+>
+> **Division of labour with auto-memory (claude only):** auto-memory keeps *project facts* (commands, URLs, where things live in this repo). How the user wants the agent to work — corrections, preferences, workflow rules — belongs here. When the two disagree, the habits block wins; the pointer line in step 6 says so to the agent.
 
 ## Paths and config
 
@@ -54,6 +56,7 @@ Config is read from the first file that exists: `~/.config/habit-distiller/confi
 
 - **Habit ledger**: `memory_dir`. When `"auto"`, use the default ledger from the table above, with `INDEX.md` as its index. **Do not** resolve `"auto"` to a per-project memory dir.
 - **Read-only ledgers**: `read_only_ledgers` (list of paths, default empty). Other ledgers — typically the other agent's — that you may consult when deciding whether a signal is already known or stable. Never write to them. If you carry a conclusion over, write it into your own ledger with a `source:` line naming the file it came from.
+- **Auto-memory audit**: `audit_auto_memory` (default `false`, claude only; ignored for codex). See step 5.5.
 - **Execution layer**: the sentinel-managed region in `<INSTRUCTIONS>`.
 - Last-run timestamp: `<state>/last-run` (Unix seconds; if absent, look back `window_days`).
 - Audit cursor: `<state>/last-audit`.
@@ -152,6 +155,22 @@ New material alone will never trigger a deletion, so run a rotating audit on top
 - **Never delete without positive evidence that it's stale.** When in doubt, leave it and re-audit later.
 - Write the new cursor back to `<state>/last-audit`.
 
+### 5.5 Auto-memory audit (claude only, read-only, only if `audit_auto_memory = true`)
+
+Claude Code's auto-memory runs in parallel and is not governed by this skill. Check it for conflicts with the habits block, and **never write to it**: no edits, no deletes, no moves. It belongs to Claude Code and to the user.
+
+1. **Find the directories.** Read `autoMemoryEnabled` and `autoMemoryDirectory` from `<HOME>/settings.json` and `<HOME>/settings.local.json`.
+   - `autoMemoryEnabled` is `false` → skip this step and say so in the report.
+   - `autoMemoryDirectory` is set → audit that directory (expand `~/`).
+   - Otherwise → audit every `<HOME>/projects/*/memory/` that contains `.md` files. Skip anything in `exclude_projects`.
+2. **Misconfiguration check.** If `autoMemoryDirectory` resolves to `memory_dir`, warn on the first line of the report: the two stores would write into one directory with different index files (`MEMORY.md` vs `INDEX.md`) and different rules.
+3. **Read each note** (frontmatter + body) and compare it with the current habits block. Flag a note when:
+   - it **contradicts** a block entry → **conflict**. This matters most: both are in context every turn.
+   - its `MEMORY.md` index links to a file that doesn't exist → **dead link**.
+   - it is a `feedback` / `user` note that the block or ledger already covers → **duplicate**. Fine for now, but the two copies will drift.
+4. **Report, don't fix.** Add a section to the report (step 7): one row per flagged note — path, kind, the block entry it collides with, a suggested fix (delete / rewrite to match / leave). List conflicts first. If nothing is flagged, say "auto-memory: N notes in M directories, no conflicts".
+5. A note is **not** evidence for the habit threshold in step 3. It was written by the agent mid-session, not said by the user. Distill only from transcripts.
+
 ### 6. Maintain the execution layer (the habits block)
 
 Only if `write_global_instructions = true` (legacy name: `write_global_claude_md`). Write the currently most useful habits between the sentinels in `<INSTRUCTIONS>`. **Only rewrite what's between the two markers**; leave the rest of the file untouched. If the file or the block does not exist yet, create it.
@@ -169,6 +188,12 @@ Keep this pointer as the **first line** of the block (with your actual ledger pa
 ```
 - Habit ledger lives in `<ledger>` (index: INDEX.md). This block holds decision rules only — read the ledger for the Why, the evidence and the cases.
 ```
+
+For claude, append this sentence to the pointer line (write it in `language`):
+```
+Auto-memory notes are for project facts; where one contradicts this block, this block wins.
+```
+The pointer line is fixed text: adding or updating it does not count against zero net growth (6.1).
 
 Rules:
 - Order by impact on day-to-day collaboration, high to low. Use `language` from config.
@@ -200,6 +225,7 @@ Measure the block after writing:
   - **block characters: before → after / limit**, and whether zero net growth held
   - which entries were audited this run, and what was pushed down or deleted
   - **ledger health**: total size, any mixed-topic files, anything split or archived
+  - **auto-memory audit** (if enabled): notes scanned, then conflicts / dead links / duplicates with suggested fixes
   - the strongest signal of the run
 
 ## Compact mode (`--compact`, manual only)

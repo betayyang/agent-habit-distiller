@@ -58,10 +58,13 @@ conclusion is overturned, the ledger keeps the history ("X was replaced by Y on
 \<date\>, because Z"); only the execution layer drops the old claim. `INDEX.md`
 carries one pointer line per habit.
 
-The Claude ledger is deliberately **not** under `projects/<slug>/memory/`: that path is
-isolated per project directory, so a session started from a git worktree or a
-second checkout sees an empty one. Everything distilled would be unreadable from
-exactly the sessions that need it most.
+The Claude ledger is deliberately **not** Claude Code's auto-memory directory. By
+default that is `projects/<slug>/memory/`, isolated per project directory, so a
+session started from a git worktree or a second checkout sees an empty one.
+Claude Code's `autoMemoryDirectory` setting can pin it to a single path, but that
+only fixes the location. Auto-memory is still written mid-session with no budget,
+no audit and no evidence trail, so the ledger stays a separate store. See
+[Running alongside auto-memory](#running-alongside-auto-memory).
 
 The ledger has no size cap — it isn't auto-loaded. It does get hygiene rules:
 split files whose topics have become mixed (ask "could I read just half of this
@@ -118,3 +121,31 @@ facts *opportunistically during a session*, scoped to *the project* ("the build 
 is complementary: it runs *between* sessions, looks *across all projects*, and
 builds a profile of *you* — communication style, recurring corrections, standing
 preferences — that no single session would surface.
+
+### Running alongside auto-memory
+
+"Complementary" only holds if the two stay out of each other's way. Left alone,
+they overlap: auto-memory uses the same four types (`user`, `feedback`, `project`,
+`reference`), so one correction from you can be saved mid-session as an
+auto-memory note *and* distilled into the ledger that night. The two copies are
+then updated on different schedules, and the auto-memory copy is never audited.
+When they drift apart, both are in context and the agent picks one.
+
+The skill handles this in three ways:
+
+1. **A division of labour.** Auto-memory keeps project facts; the habits block and
+   ledger keep how you want the agent to work.
+2. **A precedence rule in the block.** The block's first line tells the agent that
+   the block wins over a conflicting auto-memory note.
+3. **An optional read-only audit** (`audit_auto_memory = true`). The run reads your
+   auto-memory notes, lists the ones that contradict the block, and suggests a fix
+   in its report. It never edits or deletes them, because auto-memory belongs to
+   Claude Code.
+
+Pick a setup in Claude Code's `settings.json`:
+
+| You want | Setting | Effect |
+|---|---|---|
+| One source of truth | `"autoMemoryEnabled": false` | Claude Code stops reading and writing auto-memory. Habits come from this tool only. Project facts are no longer saved mid-session. |
+| Both, without per-directory gaps | `"autoMemoryDirectory": "~/.claude/project-memory"` | Every session shares one auto-memory directory. Don't point it at the ledger: the two use different index files and different write rules. |
+| Leave it as is | — | Works. Turn on `audit_auto_memory` so contradictions show up in the run report. |

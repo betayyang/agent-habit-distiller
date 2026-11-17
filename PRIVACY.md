@@ -8,6 +8,10 @@ call made by your agent, as described under [Network](#network).
 - Claude Code: transcripts in `~/.claude/projects/<project>/*.jsonl` and input history in `~/.claude/history.jsonl`
 - Codex: rollouts in `~/.codex/sessions/**/*.jsonl` and `~/.codex/archived_sessions/`, and input history in `~/.codex/history.jsonl`
 - Your existing ledger, any `read_only_ledgers` you configured, and `CLAUDE.md` / `AGENTS.md`
+- Only if you set `audit_auto_memory = true`: Claude Code's auto-memory notes
+  (`~/.claude/projects/*/memory/` or your `autoMemoryDirectory`) and the
+  `autoMemoryEnabled` / `autoMemoryDirectory` keys of `~/.claude/settings.json`.
+  They are read, never written.
 
 These are files you already have on your own machine. The tool reads them to find
 recurring habits and preferences.
@@ -26,7 +30,8 @@ never touched.
 
 ## Network
 - The distillation is a model call. Whatever the run reads — transcripts, input
-  history, your ledger and any `read_only_ledgers` — is sent to the provider of the
+  history, your ledger, any `read_only_ledgers` and (if enabled) auto-memory notes —
+  is sent to the provider of the
   agent doing the run: Anthropic for Claude Code, OpenAI for Codex. Configuring
   `read_only_ledgers` across agents therefore sends one provider's material to the
   other. Ledgers can end up holding things you pasted into a session, such as URLs

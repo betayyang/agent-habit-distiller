@@ -138,7 +138,7 @@ Uninstall (leaves your ledger + habits blocks in place):
 All knobs live in `~/.config/habit-distiller/config.toml` (see
 [`config.example.toml`](config.example.toml)): language, look-back window,
 stability threshold, character budget, whether to write the global block, project
-exclusions, ledger location, and read-only ledgers. Top-level keys apply to both
+exclusions, ledger location, read-only ledgers, and the auto-memory audit. Top-level keys apply to both
 agents; a `[claude]` or `[codex]` table overrides them for one agent.
 
 Two notes if you installed an earlier version:
@@ -151,6 +151,29 @@ Two notes if you installed an earlier version:
   so any session started from a git worktree or a second checkout got an empty one
   and could never read back what had been distilled. The skill migrates an existing
   install automatically on its next run and leaves a pointer file behind.
+
+## Using it with Claude Code auto-memory
+
+Claude Code's auto-memory is on by default and saves notes mid-session, with the
+same four types as this tool. Left alone, a correction can end up in both places
+and drift. The habits block tells the agent it wins over a conflicting
+auto-memory note. You can also pick one of these in `~/.claude/settings.json`:
+
+```json
+{ "autoMemoryEnabled": false }
+```
+One source of truth: habits come only from this tool, but project facts are no
+longer saved mid-session.
+
+```json
+{ "autoMemoryDirectory": "~/.claude/project-memory" }
+```
+Keep auto-memory for project facts, in one directory shared by every session
+(including worktrees). Don't point it at the ledger.
+
+Either way, `audit_auto_memory = true` in the config makes each run list the
+auto-memory notes that contradict your habits block. It only reports and never
+edits them. Details: [Running alongside auto-memory](docs/how-it-works.md#running-alongside-auto-memory).
 
 ## Optional: notify on each run
 

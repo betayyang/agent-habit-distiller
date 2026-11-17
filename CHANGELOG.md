@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Added
+- `audit_auto_memory` (Claude only, off by default): each run reads Claude Code's
+  auto-memory notes, read-only, and reports the ones that contradict the habits
+  block, link to missing files, or duplicate a habit. Honours `autoMemoryEnabled` and
+  `autoMemoryDirectory`, and warns if `autoMemoryDirectory` points at the ledger.
+- For Claude, the habits block's pointer line now says that auto-memory is for
+  project facts and that the block wins over a conflicting note.
+
+### Changed
+- Docs: "Why not native auto-memory" now covers running both side by side, and the
+  ledger rationale no longer leans only on per-directory isolation, which
+  `autoMemoryDirectory` can now avoid.
+
 ### Fixed
 - A failed run left its error only in `last-summary.txt` / `last-exec.log`, which the
   next run overwrites. The report and the tail of `last-exec.log` are now appended
